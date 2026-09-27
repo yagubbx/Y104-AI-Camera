@@ -1,0 +1,712 @@
+Y104 AI CAMERA — COMPLETE SETUP GUIDE
+=====================================
+
+Camera: Y104 Wi-Fi Camera
+Application: Ease Life
+Purpose: Real-time Object Detection with OpenCV + YOLO11
+
+FINAL ARCHITECTURE
+------------------
+
+Y104 Wi-Fi Camera
+        ↓
+Ease Life Cloud
+        ↓
+Home Assistant
+        ↓
+Ease Life Custom Integration
+        ↓
+HTTP-FLV Proxy
+        ↓
+Python / OpenCV
+        ↓
+YOLO11
+        ↓
+Real-Time Object Detection
+
+
+============================================================
+PART 1 — POWERSHELL / DOCKER / PYTHON
+============================================================
+
+
+1. PREPARE THE CAMERA
+---------------------
+
+Before starting on the computer:
+
+1. Power on the Y104 Wi-Fi Camera.
+2. Connect the camera to a 2.4 GHz Wi-Fi network.
+3. Add the camera to the Ease Life mobile application.
+4. Make sure the camera appears Online.
+5. Open Live View and verify that live video works.
+
+The Ease Life account will later be connected to Home Assistant.
+
+
+2. INSTALL AND START DOCKER DESKTOP
+-----------------------------------
+
+Install Docker Desktop for Windows.
+
+Start Docker Desktop and wait until the Docker Engine is running.
+
+Open PowerShell.
+
+Check Docker installation:
+
+docker --version
+
+Check Docker Engine:
+
+docker info
+
+The command should display both Client and Server information.
+
+If only Client information appears and Docker reports that it cannot
+connect to the Docker API, make sure Docker Desktop is running.
+
+
+3. CREATE THE HOME ASSISTANT CONTAINER
+--------------------------------------
+
+Run:
+
+docker run -d --name homeassistant --restart unless-stopped -v homeassistant_config:/config -p 8123:8123 ghcr.io/home-assistant/home-assistant:stable
+
+Check the container:
+
+docker ps
+
+The "homeassistant" container should appear as running.
+
+
+4. OPEN HOME ASSISTANT
+----------------------
+
+Open:
+
+http://localhost:8123
+
+Complete the initial Home Assistant setup.
+
+Create a local Home Assistant account.
+
+After the dashboard opens, continue with the custom Ease Life integration.
+
+
+5. ENTER THE HOME ASSISTANT CONTAINER
+-------------------------------------
+
+In PowerShell:
+
+docker exec -it homeassistant bash
+
+The terminal is now inside the Home Assistant container.
+
+
+6. CREATE THE CUSTOM COMPONENTS DIRECTORY
+-----------------------------------------
+
+Run:
+
+mkdir -p /config/custom_components
+
+
+7. DOWNLOAD THE EASE LIFE INTEGRATION
+-------------------------------------
+
+Run:
+
+cd /tmp
+
+curl -L https://github.com/asmsaifs/ease_life/archive/refs/heads/main.tar.gz -o ease_life.tar.gz
+
+Create a temporary extraction directory:
+
+mkdir -p ease_life_download
+
+Extract the archive:
+
+tar -xzf ease_life.tar.gz -C ease_life_download
+
+Create the integration directory:
+
+mkdir -p /config/custom_components/ease_life
+
+Copy the integration files:
+
+cp -r ease_life_download/ease_life-main/* /config/custom_components/ease_life/
+
+Verify the files:
+
+ls /config/custom_components/ease_life
+
+Files such as the following should appear:
+
+__init__.py
+camera.py
+config_flow.py
+const.py
+flv_proxy.py
+manifest.json
+services.yaml
+v4_client.py
+vrs_live.py
+
+
+8. EXIT THE CONTAINER
+---------------------
+
+Run:
+
+exit
+
+The terminal should return to Windows PowerShell.
+
+
+9. RESTART HOME ASSISTANT
+-------------------------
+
+Run:
+
+docker restart homeassistant
+
+Check:
+
+docker ps
+
+Home Assistant should be running again.
+
+
+============================================================
+PART 2 — HOME ASSISTANT
+============================================================
+
+
+10. ADD THE EASE LIFE INTEGRATION
+---------------------------------
+
+Open:
+
+http://localhost:8123
+
+Then navigate to:
+
+Settings
+→ Devices & services
+→ Add Integration
+
+Search for:
+
+Ease Life Camera
+
+Select the integration.
+
+
+11. CONNECT THE EASE LIFE ACCOUNT
+---------------------------------
+
+Enter the Ease Life account credentials.
+
+Required:
+
+Email:
+YOUR_EASE_LIFE_EMAIL
+
+Password:
+YOUR_EASE_LIFE_PASSWORD
+
+If Device ID is optional, it can initially be left empty.
+
+Submit the form.
+
+After successful authentication, the Y104 camera should be added to
+Home Assistant.
+
+
+12. VERIFY THE CAMERA
+---------------------
+
+Open the newly created Ease Life camera entity.
+
+Verify that the live camera video works inside Home Assistant.
+
+Do not continue until the camera can be viewed successfully.
+
+
+13. CONFIGURE THE FLV PROXY
+---------------------------
+
+Open:
+
+Settings
+→ Devices & services
+→ Ease Life Camera
+→ Configure / Options
+
+Configure the proxy.
+
+Example:
+
+Proxy Host:
+0.0.0.0
+
+Proxy Token:
+YOUR_PROXY_TOKEN
+
+Use a strong custom token.
+
+Do NOT publish the real token.
+
+Save the integration options.
+
+
+============================================================
+PART 1 CONTINUED — POWERSHELL
+============================================================
+
+
+14. EXPOSE THE FLV PROXY PORT
+-----------------------------
+
+The Home Assistant Docker container must expose port 8765.
+
+Because Docker cannot add a published port to an already-created
+container, recreate the container while keeping the existing
+persistent Home Assistant volume.
+
+Stop Home Assistant:
+
+docker stop homeassistant
+
+Remove only the container:
+
+docker rm homeassistant
+
+IMPORTANT:
+
+This does NOT delete the Home Assistant configuration because the
+configuration is stored in the "homeassistant_config" Docker volume.
+
+Create the container again:
+
+docker run -d --name homeassistant --restart unless-stopped -v homeassistant_config:/config -p 8123:8123 -p 8765:8765 ghcr.io/home-assistant/home-assistant:stable
+
+Check:
+
+docker ps
+
+The ports should include:
+
+8123 -> 8123
+8765 -> 8765
+
+
+15. TEST THE FLV PROXY SERVER
+-----------------------------
+
+Run:
+
+curl.exe -v --max-time 10 http://localhost:8765/
+
+A response such as:
+
+404 Not Found
+
+is acceptable at this stage.
+
+It means the HTTP server on port 8765 is reachable but the root "/"
+route is not a video endpoint.
+
+
+16. FIND THE CAMERA DEVICE ID
+-----------------------------
+
+Run:
+
+docker exec homeassistant grep -R '"unique_id"' /config/.storage/core.entity_registry
+
+Look for an entry containing:
+
+"platform":"ease_life"
+
+and:
+
+"entity_id":"camera...."
+
+The same entry contains:
+
+"unique_id":"..."
+
+That unique_id is the camera Device ID required by the FLV endpoint.
+
+Example:
+
+YOUR_DEVICE_ID
+
+Do NOT publish the real Device ID if the repository is public.
+
+
+17. BUILD THE FLV STREAM URL
+----------------------------
+
+The stream URL follows this format:
+
+http://localhost:8765/live/YOUR_DEVICE_ID.flv?token=YOUR_PROXY_TOKEN
+
+Where:
+
+YOUR_DEVICE_ID
+=
+the Ease Life camera unique_id
+
+YOUR_PROXY_TOKEN
+=
+the token configured in the Ease Life Home Assistant integration
+
+
+18. TEST THE LIVE FLV STREAM
+----------------------------
+
+Use:
+
+curl.exe --max-time 15 "http://localhost:8765/live/YOUR_DEVICE_ID.flv?token=YOUR_PROXY_TOKEN" -o "$env:USERPROFILE\Downloads\test.flv"
+
+If bytes are downloaded during the 15-second test, the stream is
+working.
+
+Because this is a live stream, curl may eventually display a timeout
+after 15 seconds.
+
+That is expected because --max-time intentionally stops the request.
+
+The important part is that video data was received.
+
+At this point the pipeline is:
+
+Y104 Camera
+→ Ease Life Cloud
+→ Home Assistant
+→ HTTP-FLV
+→ Windows
+
+
+19. CREATE THE PYTHON PROJECT
+-----------------------------
+
+Create a new project directory.
+
+Example:
+
+C:\Projects\Y104-AI-Camera
+
+Open this directory in VS Code.
+
+Create these files:
+
+Y104-AI-Camera/
+│
+├── main.py
+├── requirements.txt
+├── .env
+├── .env.example
+├── .gitignore
+├── README.md
+└── SETUP_GUIDE.txt
+
+
+20. CREATE THE PYTHON VIRTUAL ENVIRONMENT
+-----------------------------------------
+
+Open the VS Code PowerShell terminal inside the project directory.
+
+Run:
+
+python -m venv .venv
+
+Activate it:
+
+.venv\Scripts\Activate.ps1
+
+If PowerShell reports that running scripts is disabled, use a
+temporary permission change for the current PowerShell process:
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+Then:
+
+.venv\Scripts\Activate.ps1
+
+A successfully activated environment should look similar to:
+
+(.venv) PS C:\Projects\Y104-AI-Camera>
+
+
+21. CREATE requirements.txt
+---------------------------
+
+Add:
+
+ultralytics
+opencv-python
+python-dotenv
+
+
+22. INSTALL PYTHON DEPENDENCIES
+-------------------------------
+
+Run:
+
+python -m pip install --upgrade pip
+
+Then:
+
+pip install -r requirements.txt
+
+
+23. CREATE .env
+---------------
+
+Add:
+
+CAMERA_URL=http://localhost:8765/live/YOUR_DEVICE_ID.flv?token=YOUR_PROXY_TOKEN
+
+Replace:
+
+YOUR_DEVICE_ID
+
+and:
+
+YOUR_PROXY_TOKEN
+
+with the real values.
+
+IMPORTANT:
+
+.env contains private configuration and must NOT be uploaded to GitHub.
+
+
+24. CREATE .env.example
+-----------------------
+
+Add:
+
+CAMERA_URL=http://localhost:8765/live/YOUR_DEVICE_ID.flv?token=YOUR_PROXY_TOKEN
+
+This file contains placeholders only.
+
+.env.example can safely be uploaded to GitHub.
+
+
+25. CREATE .gitignore
+---------------------
+
+Add:
+
+.venv/
+.env
+__pycache__/
+*.pyc
+*.pt
+
+
+26. CREATE main.py
+------------------
+
+Add:
+
+import os
+
+import cv2
+from dotenv import load_dotenv
+from ultralytics import YOLO
+
+
+load_dotenv()
+
+camera_url = os.getenv("CAMERA_URL")
+
+if not camera_url:
+    raise ValueError("CAMERA_URL was not found in the .env file.")
+
+
+model = YOLO("yolo11n.pt")
+
+
+cap = cv2.VideoCapture(camera_url)
+
+if not cap.isOpened():
+    raise RuntimeError("Camera stream could not be opened.")
+
+
+print("Camera connected.")
+print("Press Q to exit.")
+
+
+while True:
+
+    ret, frame = cap.read()
+
+    if not ret:
+        print("Could not read frame.")
+        break
+
+    results = model(frame, verbose=False)
+
+    annotated_frame = results[0].plot()
+
+    cv2.imshow("Y104 - YOLO Detection", annotated_frame)
+
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
+
+
+cap.release()
+cv2.destroyAllWindows()
+
+
+27. RUN THE PROJECT
+-------------------
+
+Before running the Python application, make sure:
+
+1. The Y104 camera is online.
+2. Internet access is available.
+3. Docker Desktop is running.
+4. The Home Assistant container is running.
+5. Ease Life Camera integration is connected.
+6. Port 8765 is exposed.
+7. The .env file contains the correct stream URL.
+
+Check Docker:
+
+docker ps
+
+Then run:
+
+python main.py
+
+
+28. FIRST YOLO RUN
+------------------
+
+On the first run, Ultralytics may automatically download:
+
+yolo11n.pt
+
+After the model loads, OpenCV should open a new window.
+
+The window should display:
+
+- Live Y104 camera video
+- Detected objects
+- Bounding boxes
+- Class names
+
+Press:
+
+Q
+
+to close the application.
+
+
+29. H.264 WARNINGS
+------------------
+
+Messages similar to:
+
+[h264] sps_id ... out of range
+
+or:
+
+[h264] pps_id ... out of range
+
+may occasionally appear when connecting to the live stream.
+
+If the live video opens and object detection works correctly, these
+initial decoder warnings do not necessarily mean the application has
+failed.
+
+
+30. STARTING THE PROJECT AGAIN LATER
+------------------------------------
+
+For future use, the entire installation does NOT need to be repeated.
+
+Start Docker Desktop.
+
+Check Home Assistant:
+
+docker ps
+
+If the Home Assistant container is stopped:
+
+docker start homeassistant
+
+Open the project directory in VS Code.
+
+Activate the virtual environment:
+
+.venv\Scripts\Activate.ps1
+
+If PowerShell blocks activation for the current terminal:
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+.venv\Scripts\Activate.ps1
+
+Then run:
+
+python main.py
+
+
+31. SECURITY
+------------
+
+Never upload these values publicly:
+
+- Ease Life password
+- Home Assistant password
+- Real proxy token
+- Private camera credentials
+
+Never commit:
+
+.env
+
+Keep this entry in .gitignore:
+
+.env
+
+Do not expose port 8765 through router port forwarding to the public
+Internet unless the system is intentionally secured for remote access.
+
+If a proxy token is accidentally published, replace it immediately.
+
+
+32. FINAL RESULT
+----------------
+
+The completed system is:
+
+Y104 Wi-Fi Camera
+        ↓
+Ease Life Cloud
+        ↓
+Home Assistant
+        ↓
+Ease Life Camera Integration
+        ↓
+HTTP-FLV Proxy :8765
+        ↓
+Python
+        ↓
+OpenCV
+        ↓
+YOLO11
+        ↓
+Real-Time AI Object Detection
+
+
+END OF SETUP GUIDE
