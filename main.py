@@ -5,50 +5,52 @@ from dotenv import load_dotenv
 from ultralytics import YOLO
 
 
-# .env faylını oxu
+# Load environment variables from the .env file
 load_dotenv()
 
 camera_url = os.getenv("CAMERA_URL")
 
 if not camera_url:
-    raise ValueError("CAMERA_URL .env faylında tapılmadı!")
+    raise ValueError("CAMERA_URL was not found in the .env file!")
 
 
-# YOLO modelini yüklə
+# Load the YOLO object detection model
 model = YOLO("yolo11n.pt")
 
 
-# Ease Life canlı stream-inə qoşul
+# Connect to the Ease Life live camera stream
 cap = cv2.VideoCapture(camera_url)
 
 if not cap.isOpened():
-    raise RuntimeError("Kamera stream-i açıla bilmədi!")
+    raise RuntimeError("Could not open the camera stream!")
 
 
-print("Kamera qoşuldu!")
-print("Çıxmaq üçün Q bas.")
+print("Camera connected!")
+print("Press Q to exit.")
 
 
 while True:
+    # Read the next frame from the live camera stream
     ret, frame = cap.read()
 
     if not ret:
-        print("Frame alına bilmədi.")
+        print("Could not read a frame from the camera stream.")
         break
 
-    # YOLO ilə obyektləri tap
+    # Run YOLO object detection on the current frame
     results = model(frame, verbose=False)
 
-    # Bounding box-ları frame üzərinə çək
+    # Draw detected objects, bounding boxes, and class labels
     annotated_frame = results[0].plot()
 
-    # Nəticəni göstər
+    # Display the processed live video
     cv2.imshow("Y104 - YOLO Detection", annotated_frame)
 
-    # Q basıldıqda proqramı bağla
+    # Exit the application when Q is pressed
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
 
+# Release the camera stream and close all OpenCV windows
 cap.release()
 cv2.destroyAllWindows()
